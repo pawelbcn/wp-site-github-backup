@@ -3,7 +3,7 @@
  * Plugin Name: WP Site GitHub Backup
  * Plugin URI: https://example.com/wp-site-github-backup
  * Description: Backup and restore your entire WordPress installation to/from a GitHub repository
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Your Name
  * Author URI: https://example.com
  * License: GPL v2 or later
@@ -14,6 +14,12 @@
 if (!defined('WPINC')) {
     die;
 }
+
+// Define plugin constants
+define('WP_SITE_GITHUB_BACKUP_VERSION', '2.0.0');
+define('WP_SITE_GITHUB_BACKUP_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('WP_SITE_GITHUB_BACKUP_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('WP_SITE_GITHUB_BACKUP_GITHUB_REPO', 'pawelbcn/wp-site-github-backup');
 
 // Create necessary files and directories
 function wp_site_github_backup_activate() {
@@ -111,37 +117,57 @@ if (!defined(\'WPINC\')) {
                     </th>
                     <td>
                         <input type="password" id="wp_site_github_backup_github_token" name="wp_site_github_backup_github_token" value="<?php echo esc_attr(get_option(\'wp_site_github_backup_github_token\')); ?>" class="regular-text">
-                        <p class="description">
-                            <?php _e(\'You need to create a Personal Access Token with \\\'repo\\\' permissions. <a href="https://github.com/settings/tokens" target="_blank">Create one here</a>.\', \'wp-site-github-backup\'); ?>
-                        </p>
+                        <p class="description"><?php _e(\'Create a token with \\\'repo\\\' permissions at GitHub Settings → Developer Settings → Personal Access Tokens\', \'wp-site-github-backup\'); ?></p>
                     </td>
                 </tr>
                 <tr>
                     <th scope="row">
-                        <label for="wp_site_github_backup_exclude_dirs"><?php _e(\'Excluded Directories (one per line)\', \'wp-site-github-backup\'); ?></label>
+                        <label for="wp_site_github_backup_excluded_dirs"><?php _e(\'Excluded Directories\', \'wp-site-github-backup\'); ?></label>
                     </th>
                     <td>
-                        <textarea id="wp_site_github_backup_exclude_dirs" name="wp_site_github_backup_exclude_dirs" rows="5" cols="50"><?php echo esc_textarea(get_option(\'wp_site_github_backup_exclude_dirs\', ".git\n.github\nwp-content/uploads\nwp-content/backups")); ?></textarea>
-                        <p class="description">
-                            <?php _e(\'These directories will be excluded from the backup process.\', \'wp-site-github-backup\'); ?>
-                        </p>
+                        <textarea id="wp_site_github_backup_excluded_dirs" name="wp_site_github_backup_excluded_dirs" rows="5" class="large-text"><?php echo esc_textarea(get_option(\'wp_site_github_backup_excluded_dirs\', "wp-content/uploads\nwp-content/cache\nwp-content/upgrade\nwp-content/backup*\n.git")); ?></textarea>
+                        <p class="description"><?php _e(\'Enter one directory per line, relative to WordPress root\', \'wp-site-github-backup\'); ?></p>
                     </td>
                 </tr>
             </table>
             
-            <?php submit_button(__(\'Save Settings\', \'wp-site-github-backup\')); ?>
+            <?php submit_button(); ?>
         </form>
     </div>
     
     <div class="wp-site-github-backup-actions">
-        <h2><?php _e(\'Backup & Restore Actions\', \'wp-site-github-backup\'); ?></h2>
+        <h2><?php _e(\'Backup and Restore\', \'wp-site-github-backup\'); ?></h2>
+        
+        <p><?php _e(\'Use the buttons below to backup your WordPress installation to GitHub or restore from GitHub.\', \'wp-site-github-backup\'); ?></p>
         
         <div class="wp-site-github-backup-buttons">
             <button id="wp-site-github-backup-upload" class="button button-primary"><?php _e(\'Backup to GitHub\', \'wp-site-github-backup\'); ?></button>
-            <button id="wp-site-github-backup-download" class="button button-secondary"><?php _e(\'Restore from GitHub\', \'wp-site-github-backup\'); ?></button>
+            <button id="wp-site-github-backup-download" class="button"><?php _e(\'Restore from GitHub\', \'wp-site-github-backup\'); ?></button>
         </div>
         
-        <div id="wp-site-github-backup-status"></div>
+        <div id="wp-site-github-backup-progress" style="display: none;">
+            <h3><?php _e(\'Progress\', \'wp-site-github-backup\'); ?></h3>
+            <div class="wp-site-github-backup-progress-bar">
+                <div class="wp-site-github-backup-progress-bar-inner"></div>
+            </div>
+            <div class="wp-site-github-backup-progress-status"></div>
+        </div>
+        
+        <div id="wp-site-github-backup-log" style="display: none;">
+            <h3><?php _e(\'Log\', \'wp-site-github-backup\'); ?></h3>
+            <div class="wp-site-github-backup-log-content"></div>
+        </div>
+    </div>
+    
+    <div class="wp-site-github-backup-update">
+        <h2><?php _e(\'Plugin Updates\', \'wp-site-github-backup\'); ?></h2>
+        
+        <p><?php _e(\'Update this plugin directly from GitHub to get the latest features and bug fixes.\', \'wp-site-github-backup\'); ?></p>
+        
+        <form method="post" action="">
+            <?php wp_nonce_field(\'wp_site_github_backup_update\', \'wp_site_github_backup_update_nonce\'); ?>
+            <button type="submit" name="wp_site_github_backup_update_from_github" class="button button-secondary"><?php _e(\'Update Plugin from GitHub\', \'wp-site-github-backup\'); ?></button>
+        </form>
     </div>
 </div>';
 }
@@ -281,7 +307,7 @@ class WP_Site_GitHub_Backup {
      *
      * @var string
      */
-    const VERSION = '1.0.0';
+    const VERSION = '2.0.0';
     
     /**
      * Instance of this class.
@@ -360,7 +386,7 @@ class WP_Site_GitHub_Backup {
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_github_token');
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_github_repo');
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_github_username');
-        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_exclude_dirs', array($this, 'sanitize_exclude_dirs'));
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_excluded_dirs', array($this, 'sanitize_exclude_dirs'));
     }
     
     /**
@@ -500,7 +526,7 @@ class WP_Site_GitHub_Backup {
      * Get list of directories to exclude.
      */
     private function get_exclude_dirs() {
-        $exclude_dirs_raw = get_option('wp_site_github_backup_exclude_dirs', ".git\n.github\nwp-content/uploads\nwp-content/backups");
+        $exclude_dirs_raw = get_option('wp_site_github_backup_excluded_dirs', "wp-content/uploads\nwp-content/cache\nwp-content/upgrade\nwp-content/backup*\n.git");
         $exclude_dirs = explode("\n", $exclude_dirs_raw);
         $exclude_dirs = array_map('trim', $exclude_dirs);
         return array_filter($exclude_dirs);
@@ -722,3 +748,106 @@ register_activation_hook(__FILE__, 'wp_site_github_backup_activate');
 
 // Initialize the plugin
 add_action('plugins_loaded', array('WP_Site_GitHub_Backup', 'get_instance'));
+
+// Add update from GitHub functionality
+function wp_site_github_backup_check_for_updates() {
+    // Check if we need to update from GitHub
+    if (isset($_POST['wp_site_github_backup_update_from_github']) && current_user_can('manage_options')) {
+        // Verify nonce
+        if (!isset($_POST['wp_site_github_backup_update_nonce']) || 
+            !wp_verify_nonce($_POST['wp_site_github_backup_update_nonce'], 'wp_site_github_backup_update')) {
+            wp_die('Security check failed');
+        }
+        
+        // Get the latest release from GitHub
+        $response = wp_remote_get('https://api.github.com/repos/' . WP_SITE_GITHUB_BACKUP_GITHUB_REPO . '/releases/latest');
+        
+        if (is_wp_error($response)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $release = json_decode($body);
+        
+        if (!$release || !isset($release->zipball_url)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        // Download the latest release
+        $download_response = wp_remote_get($release->zipball_url, array(
+            'timeout' => 300,
+            'stream' => true,
+            'filename' => WP_CONTENT_DIR . '/upgrade/wp-site-github-backup.zip'
+        ));
+        
+        if (is_wp_error($download_response)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        // Extract the downloaded file
+        global $wp_filesystem;
+        if (!$wp_filesystem) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        
+        $unzip_result = unzip_file(
+            WP_CONTENT_DIR . '/upgrade/wp-site-github-backup.zip',
+            WP_CONTENT_DIR . '/upgrade/wp-site-github-backup-temp'
+        );
+        
+        if (is_wp_error($unzip_result)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        // Find the extracted directory (it has a random name)
+        $extracted_dirs = glob(WP_CONTENT_DIR . '/upgrade/wp-site-github-backup-temp/*', GLOB_ONLYDIR);
+        if (empty($extracted_dirs)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        $extracted_dir = $extracted_dirs[0];
+        
+        // Copy files to plugin directory
+        $copy_result = copy_dir(
+            $extracted_dir,
+            WP_SITE_GITHUB_BACKUP_PLUGIN_DIR
+        );
+        
+        if (is_wp_error($copy_result)) {
+            add_action('admin_notices', 'wp_site_github_backup_update_error_notice');
+            return;
+        }
+        
+        // Clean up
+        $wp_filesystem->delete(WP_CONTENT_DIR . '/upgrade/wp-site-github-backup.zip');
+        $wp_filesystem->delete(WP_CONTENT_DIR . '/upgrade/wp-site-github-backup-temp', true);
+        
+        // Success notice
+        add_action('admin_notices', 'wp_site_github_backup_update_success_notice');
+    }
+}
+add_action('admin_init', 'wp_site_github_backup_check_for_updates');
+
+// Error notice for update
+function wp_site_github_backup_update_error_notice() {
+    ?>
+    <div class="notice notice-error is-dismissible">
+        <p><?php _e('Error updating plugin from GitHub. Please try again or update manually.', 'wp-site-github-backup'); ?></p>
+    </div>
+    <?php
+}
+
+// Success notice for update
+function wp_site_github_backup_update_success_notice() {
+    ?>
+    <div class="notice notice-success is-dismissible">
+        <p><?php _e('Plugin successfully updated from GitHub!', 'wp-site-github-backup'); ?></p>
+    </div>
+    <?php
+}
