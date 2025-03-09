@@ -1,0 +1,124 @@
+/**
+ * Admin CSS for WP Site GitHub Backup
+ */
+
+.wp-site-github-backup-settings,
+.wp-site-github-backup-actions,
+.wp-site-github-backup-update,
+.wp-site-github-backup-versions {
+    margin-top: 20px;
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.wp-site-github-backup-buttons {
+    margin: 20px 0;
+}
+
+.wp-site-github-backup-buttons button {
+    margin-right: 10px;
+}
+
+.wp-site-github-backup-progress-bar {
+    height: 20px;
+    background-color: #f0f0f0;
+    border-radius: 3px;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.wp-site-github-backup-progress-bar-inner {
+    height: 100%;
+    background-color: #0073aa;
+    width: 0;
+    transition: width 0.3s ease;
+}
+
+.wp-site-github-backup-progress-status {
+    margin-bottom: 20px;
+    font-style: italic;
+}
+
+.wp-site-github-backup-log-content {
+    background-color: #f5f5f5;
+    border: 1px solid #ddd;
+    padding: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: monospace;
+    white-space: pre-wrap;
+    margin-bottom: 20px;
+}
+
+.wp-site-github-backup-log-content .success {
+    color: #46b450;
+}
+
+.wp-site-github-backup-log-content .error {
+    color: #dc3232;
+}
+
+.wp-site-github-backup-log-content .info {
+    color: #00a0d2;
+}
+
+.wp-site-github-backup-log-content .warning {
+    color: #ffb900;
+}
+
+/* Version information styles */
+.wp-site-github-backup-versions h2 {
+    display: flex;
+    align-items: center;
+}
+
+.wp-site-github-backup-versions h2 .page-title-action {
+    margin-left: 10px;
+    padding: 4px 8px;
+    position: relative;
+    top: -3px;
+    text-decoration: none;
+    border: 1px solid #0071a1;
+    border-radius: 2px;
+    text-shadow: none;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: normal;
+    color: #0071a1;
+    background: #f3f5f6;
+    cursor: pointer;
+}
+
+.wp-site-github-backup-versions h2 .page-title-action:hover {
+    background: #f1f1f1;
+    border-color: #016087;
+    color: #016087;
+}
+
+.wp-site-github-backup-versions .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: text-top;
+}
+
+.wp-site-github-backup-status-current {
+    color: #46b450;
+    font-weight: bold;
+}
+
+.wp-site-github-backup-status-ahead {
+    color: #00a0d2;
+    font-weight: bold;
+}
+
+.wp-site-github-backup-status-behind {
+    color: #dc3232;
+    font-weight: bold;
+}
+
+.wp-site-github-backup-versions form {
+    margin: 0 5px 0 0;
+} 

@@ -387,6 +387,11 @@ class WP_Site_GitHub_Backup {
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_github_repo');
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_github_username');
         register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_excluded_dirs', array($this, 'sanitize_exclude_dirs'));
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_production_url');
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_ftp_host');
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_ftp_user');
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_ftp_pass');
+        register_setting('wp_site_github_backup_settings', 'wp_site_github_backup_ftp_path');
     }
     
     /**
@@ -850,4 +855,370 @@ function wp_site_github_backup_update_success_notice() {
         <p><?php _e('Plugin successfully updated from GitHub!', 'wp-site-github-backup'); ?></p>
     </div>
     <?php
+}
+
+/**
+ * Get the latest version from GitHub
+ */
+function wp_site_github_backup_get_github_version() {
+    // Check if we have a cached version
+    $github_version = get_transient('wp_site_github_backup_github_version');
+    
+    // If we need to refresh or don't have a cached version
+    if (isset($_GET['refresh_versions']) || false === $github_version) {
+        // Get the latest release from GitHub
+        $response = wp_remote_get('https://api.github.com/repos/' . WP_SITE_GITHUB_BACKUP_GITHUB_REPO . '/releases/latest');
+        
+        if (is_wp_error($response)) {
+            return 'Unknown';
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $release = json_decode($body);
+        
+        if (!$release || !isset($release->tag_name)) {
+            return 'Unknown';
+        }
+        
+        // Clean up version number (remove 'v' prefix if present)
+        $github_version = ltrim($release->tag_name, 'v');
+        
+        // Cache the version for 1 hour
+        set_transient('wp_site_github_backup_github_version', $github_version, HOUR_IN_SECONDS);
+    }
+    
+    return $github_version;
+}
+
+/**
+ * Get the version from the production site
+ */
+function wp_site_github_backup_get_production_version() {
+    // Check if we have a cached version
+    $production_version = get_transient('wp_site_github_backup_production_version');
+    
+    // If we need to refresh or don't have a cached version
+    if (isset($_GET['refresh_versions']) || false === $production_version) {
+        $production_url = get_option('wp_site_github_backup_production_url');
+        
+        if (empty($production_url)) {
+            return 'Not configured';
+        }
+        
+        // Add trailing slash if not present
+        $production_url = trailingslashit($production_url);
+        
+        // Get the version from the production site
+        $response = wp_remote_get($production_url . 'wp-content/plugins/wp-site-github-backup/version.php');
+        
+        if (is_wp_error($response)) {
+            return 'Unknown';
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        
+        // Parse the version from the response
+        if (preg_match('/Version:\s*([0-9.]+)/', $body, $matches)) {
+            $production_version = $matches[1];
+        } else {
+            $production_version = 'Unknown';
+        }
+        
+        // Cache the version for 1 hour
+        set_transient('wp_site_github_backup_production_version', $production_version, HOUR_IN_SECONDS);
+    }
+    
+    return $production_version;
+}
+
+/**
+ * Handle updating GitHub from local
+ */
+function wp_site_github_backup_handle_update_github() {
+    if (isset($_POST['wp_site_github_backup_update_github']) && current_user_can('manage_options')) {
+        // Verify nonce
+        if (!isset($_POST['wp_site_github_backup_update_github_nonce']) || 
+            !wp_verify_nonce($_POST['wp_site_github_backup_update_github_nonce'], 'wp_site_github_backup_update_github')) {
+            wp_die('Security check failed');
+        }
+        
+        // Get GitHub settings
+        $username = get_option('wp_site_github_backup_github_username');
+        $repo = get_option('wp_site_github_backup_github_repo');
+        $token = get_option('wp_site_github_backup_github_token');
+        
+        if (empty($username) || empty($repo) || empty($token)) {
+            add_action('admin_notices', function() {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('GitHub settings are not configured. Please configure them first.', 'wp-site-github-backup') . '</p></div>';
+            });
+            return;
+        }
+        
+        // Create a temporary directory
+        $temp_dir = WP_CONTENT_DIR . '/upgrade/wp-site-github-backup-temp';
+        if (!is_dir($temp_dir)) {
+            mkdir($temp_dir, 0755, true);
+        }
+        
+        // Clone the repository
+        $result = wp_site_github_backup_clone_github_repo($username, $repo, $token, $temp_dir);
+        
+        if (is_wp_error($result)) {
+            add_action('admin_notices', function() use ($result) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('Error cloning GitHub repository: ', 'wp-site-github-backup') . esc_html($result->get_error_message()) . '</p></div>';
+            });
+            return;
+        }
+        
+        // Copy plugin files to the repository
+        $plugin_dir = WP_SITE_GITHUB_BACKUP_PLUGIN_DIR;
+        $exclude_dirs = array('.git', '.github');
+        
+        $result = wp_site_github_backup_copy_files($plugin_dir, $temp_dir, $exclude_dirs);
+        
+        if (is_wp_error($result)) {
+            add_action('admin_notices', function() use ($result) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('Error copying files: ', 'wp-site-github-backup') . esc_html($result->get_error_message()) . '</p></div>';
+            });
+            return;
+        }
+        
+        // Commit and push changes
+        $result = wp_site_github_backup_commit_and_push($temp_dir, 'Update to version ' . WP_SITE_GITHUB_BACKUP_VERSION);
+        
+        if (is_wp_error($result)) {
+            add_action('admin_notices', function() use ($result) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('Error pushing to GitHub: ', 'wp-site-github-backup') . esc_html($result->get_error_message()) . '</p></div>';
+            });
+            return;
+        }
+        
+        // Create a new tag
+        $result = wp_site_github_backup_create_tag($temp_dir, WP_SITE_GITHUB_BACKUP_VERSION, 'Version ' . WP_SITE_GITHUB_BACKUP_VERSION . ' release');
+        
+        if (is_wp_error($result)) {
+            add_action('admin_notices', function() use ($result) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('Error creating tag: ', 'wp-site-github-backup') . esc_html($result->get_error_message()) . '</p></div>';
+            });
+            return;
+        }
+        
+        // Clean up
+        wp_site_github_backup_recursive_rmdir($temp_dir);
+        
+        // Clear the cached GitHub version
+        delete_transient('wp_site_github_backup_github_version');
+        
+        // Success notice
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-success is-dismissible"><p>' . __('GitHub repository updated successfully!', 'wp-site-github-backup') . '</p></div>';
+        });
+    }
+}
+add_action('admin_init', 'wp_site_github_backup_handle_update_github');
+
+/**
+ * Handle updating production from local
+ */
+function wp_site_github_backup_handle_update_production() {
+    if (isset($_POST['wp_site_github_backup_update_production']) && current_user_can('manage_options')) {
+        // Verify nonce
+        if (!isset($_POST['wp_site_github_backup_update_production_nonce']) || 
+            !wp_verify_nonce($_POST['wp_site_github_backup_update_production_nonce'], 'wp_site_github_backup_update_production')) {
+            wp_die('Security check failed');
+        }
+        
+        // Get FTP settings
+        $ftp_host = get_option('wp_site_github_backup_ftp_host');
+        $ftp_user = get_option('wp_site_github_backup_ftp_user');
+        $ftp_pass = get_option('wp_site_github_backup_ftp_pass');
+        $ftp_path = get_option('wp_site_github_backup_ftp_path');
+        
+        if (empty($ftp_host) || empty($ftp_user) || empty($ftp_pass) || empty($ftp_path)) {
+            add_action('admin_notices', function() {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('FTP settings are not configured. Please configure them first.', 'wp-site-github-backup') . '</p></div>';
+            });
+            return;
+        }
+        
+        // Create a version.php file
+        $version_file = WP_SITE_GITHUB_BACKUP_PLUGIN_DIR . 'version.php';
+        $version_content = "<?php\n// Version information for WP Site GitHub Backup\necho 'Version: " . WP_SITE_GITHUB_BACKUP_VERSION . "';\n";
+        file_put_contents($version_file, $version_content);
+        
+        // Upload files to production
+        $result = wp_site_github_backup_upload_to_production($ftp_host, $ftp_user, $ftp_pass, $ftp_path);
+        
+        if (is_wp_error($result)) {
+            add_action('admin_notices', function() use ($result) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . __('Error uploading to production: ', 'wp-site-github-backup') . esc_html($result->get_error_message()) . '</p></div>';
+            });
+            return;
+        }
+        
+        // Clear the cached production version
+        delete_transient('wp_site_github_backup_production_version');
+        
+        // Success notice
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-success is-dismissible"><p>' . __('Production site updated successfully!', 'wp-site-github-backup') . '</p></div>';
+        });
+    }
+}
+add_action('admin_init', 'wp_site_github_backup_handle_update_production');
+
+/**
+ * Helper function to clone a GitHub repository
+ */
+function wp_site_github_backup_clone_github_repo($username, $repo, $token, $dir) {
+    // Clean up directory if it exists
+    if (is_dir($dir)) {
+        wp_site_github_backup_recursive_rmdir($dir);
+    }
+    
+    // Create directory
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+    
+    // Clone repository
+    $repo_url = "https://{$token}@github.com/{$username}/{$repo}.git";
+    $command = "git clone {$repo_url} {$dir} 2>&1";
+    
+    exec($command, $output, $return_var);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('git_clone_failed', implode("\n", $output));
+    }
+    
+    return true;
+}
+
+/**
+ * Helper function to copy files
+ */
+function wp_site_github_backup_copy_files($source, $destination, $exclude_dirs = array()) {
+    if (!is_dir($source)) {
+        return new WP_Error('source_not_dir', 'Source is not a directory');
+    }
+    
+    if (!is_dir($destination)) {
+        mkdir($destination, 0755, true);
+    }
+    
+    $dir = opendir($source);
+    
+    while (($file = readdir($dir)) !== false) {
+        if ($file == '.' || $file == '..') {
+            continue;
+        }
+        
+        // Skip excluded directories
+        if (in_array($file, $exclude_dirs)) {
+            continue;
+        }
+        
+        $src_file = $source . '/' . $file;
+        $dst_file = $destination . '/' . $file;
+        
+        if (is_dir($src_file)) {
+            wp_site_github_backup_copy_files($src_file, $dst_file, $exclude_dirs);
+        } else {
+            copy($src_file, $dst_file);
+        }
+    }
+    
+    closedir($dir);
+    
+    return true;
+}
+
+/**
+ * Helper function to commit and push changes
+ */
+function wp_site_github_backup_commit_and_push($dir, $message) {
+    // Add all files
+    $command = "cd {$dir} && git add . 2>&1";
+    exec($command, $output, $return_var);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('git_add_failed', implode("\n", $output));
+    }
+    
+    // Commit changes
+    $command = "cd {$dir} && git commit -m \"{$message}\" 2>&1";
+    exec($command, $output, $return_var);
+    
+    // It's okay if there's nothing to commit
+    if ($return_var !== 0 && !strpos(implode("\n", $output), 'nothing to commit')) {
+        return new WP_Error('git_commit_failed', implode("\n", $output));
+    }
+    
+    // Push changes
+    $command = "cd {$dir} && git push origin main 2>&1";
+    exec($command, $output, $return_var);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('git_push_failed', implode("\n", $output));
+    }
+    
+    return true;
+}
+
+/**
+ * Helper function to create a tag
+ */
+function wp_site_github_backup_create_tag($dir, $tag, $message) {
+    // Create tag
+    $command = "cd {$dir} && git tag -a {$tag} -m \"{$message}\" 2>&1";
+    exec($command, $output, $return_var);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('git_tag_failed', implode("\n", $output));
+    }
+    
+    // Push tag
+    $command = "cd {$dir} && git push origin {$tag} 2>&1";
+    exec($command, $output, $return_var);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('git_push_tag_failed', implode("\n", $output));
+    }
+    
+    return true;
+}
+
+/**
+ * Helper function to upload files to production
+ */
+function wp_site_github_backup_upload_to_production($host, $user, $pass, $path) {
+    // Create a temporary script
+    $temp_script = WP_CONTENT_DIR . '/upgrade/upload-to-production.sh';
+    $script_content = "#!/bin/bash\n\n";
+    $script_content .= "# FTP Configuration\n";
+    $script_content .= "FTP_HOST=\"{$host}\"\n";
+    $script_content .= "FTP_USER=\"{$user}\"\n";
+    $script_content .= "FTP_PASS=\"{$pass}\"\n";
+    $script_content .= "REMOTE_PATH=\"{$path}\"\n";
+    $script_content .= "LOCAL_PATH=\"" . WP_SITE_GITHUB_BACKUP_PLUGIN_DIR . "\"\n\n";
+    $script_content .= "# Upload files\n";
+    $script_content .= "curl -T \"{$LOCAL_PATH}/wp-site-github-backup.php\" -u \"{$FTP_USER}:{$FTP_PASS}\" \"ftp://{$FTP_HOST}{$REMOTE_PATH}/wp-site-github-backup.php\"\n";
+    $script_content .= "curl -T \"{$LOCAL_PATH}/README.md\" -u \"{$FTP_USER}:{$FTP_PASS}\" \"ftp://{$FTP_HOST}{$REMOTE_PATH}/README.md\"\n";
+    $script_content .= "curl -T \"{$LOCAL_PATH}/version.php\" -u \"{$FTP_USER}:{$FTP_PASS}\" \"ftp://{$FTP_HOST}{$REMOTE_PATH}/version.php\"\n";
+    
+    file_put_contents($temp_script, $script_content);
+    chmod($temp_script, 0755);
+    
+    // Execute the script
+    $command = "{$temp_script} 2>&1";
+    exec($command, $output, $return_var);
+    
+    // Clean up
+    unlink($temp_script);
+    
+    if ($return_var !== 0) {
+        return new WP_Error('upload_failed', implode("\n", $output));
+    }
+    
+    return true;
 }
