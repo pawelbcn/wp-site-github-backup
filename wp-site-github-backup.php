@@ -3,7 +3,7 @@
  * Plugin Name: WP Site GitHub Backup
  * Plugin URI: https://example.com/wp-site-github-backup
  * Description: Backup and restore your entire WordPress installation to/from a GitHub repository
- * Version: 2.0.0
+ * Version: 2.1.0
  * Author: Your Name
  * Author URI: https://example.com
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('WP_SITE_GITHUB_BACKUP_VERSION', '2.0.0');
+define('WP_SITE_GITHUB_BACKUP_VERSION', '2.1.0');
 define('WP_SITE_GITHUB_BACKUP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WP_SITE_GITHUB_BACKUP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WP_SITE_GITHUB_BACKUP_GITHUB_REPO', 'pawelbcn/wp-site-github-backup');
@@ -307,7 +307,7 @@ class WP_Site_GitHub_Backup {
      *
      * @var string
      */
-    const VERSION = '2.0.0';
+    const VERSION = '2.1.0';
     
     /**
      * Instance of this class.

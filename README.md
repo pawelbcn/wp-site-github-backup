@@ -20,6 +20,8 @@ WP Site GitHub Backup provides a simple way to version control your entire WordP
 - **Backup Before Restore**: Automatically creates a local backup before restoring from GitHub
 - **Production Updates**: Easily upload changes from your production site to GitHub using the included script
 - **Self-Update**: Update the plugin directly from GitHub with one click
+- **Version Tracking**: Track versions across local, GitHub, and production environments
+- **Environment Comparison**: Compare versions and update between environments with one click
 
 ## Requirements
 
@@ -72,6 +74,14 @@ After installation, you need to configure the following settings:
 4. All production files will be stored in the `production-updates` directory
 
 ## Changelog
+
+### Version 2.1.0
+- Added version tracking across local, GitHub, and production environments
+- Added environment comparison with status indicators
+- Added one-click update buttons between environments
+- Added FTP settings for production site updates
+- Added refresh button to check for version updates
+- Improved UI with better version information display
 
 ### Version 2.0.0
 - Added "Update from GitHub" button to update the plugin directly from the admin panel
